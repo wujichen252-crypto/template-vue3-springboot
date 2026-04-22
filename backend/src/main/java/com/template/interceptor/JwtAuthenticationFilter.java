@@ -1,6 +1,7 @@
 package com.template.interceptor;
 
-import com.template.common.exception.BusinessException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.template.common.result.ApiResult;
 import com.template.common.result.ResultCode;
 import com.template.common.util.JwtUtil;
 import com.template.service.TokenBlacklistService;
@@ -25,6 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final TokenBlacklistService tokenBlacklistService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -35,13 +37,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(token)) {
             try {
                 if (tokenBlacklistService.isBlacklisted(token)) {
-                    throw new BusinessException(ResultCode.UNAUTHORIZED);
+                    writeErrorResponse(response, ResultCode.UNAUTHORIZED);
+                    return;
                 }
 
                 Claims claims = jwtUtil.parseToken(token);
                 String type = (String) claims.get("type");
                 if (!"access".equals(type)) {
-                    throw new BusinessException(ResultCode.UNAUTHORIZED);
+                    writeErrorResponse(response, ResultCode.UNAUTHORIZED);
+                    return;
                 }
 
                 Long userId = Long.valueOf(claims.getSubject());
@@ -50,6 +54,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (Exception e) {
                 SecurityContextHolder.clearContext();
+                writeErrorResponse(response, ResultCode.UNAUTHORIZED);
+                return;
             }
         }
 
@@ -62,5 +68,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return bearerToken.substring(7);
         }
         return null;
+    }
+
+    private void writeErrorResponse(HttpServletResponse response, ResultCode resultCode) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json;charset=UTF-8");
+        ApiResult<Void> result = ApiResult.error(resultCode);
+        response.getWriter().write(objectMapper.writeValueAsString(result));
     }
 }
