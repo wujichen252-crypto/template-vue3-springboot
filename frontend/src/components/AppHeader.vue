@@ -17,15 +17,38 @@ const handleLogout = async (): Promise<void> => {
 <template>
   <header class="app-header">
     <div class="header-container">
-      <router-link to="/" class="logo">
+      <router-link
+        to="/"
+        class="logo"
+      >
         <span class="logo-text">Template</span>
       </router-link>
       <nav class="header-nav">
-        <router-link to="/" class="nav-link">首页</router-link>
-        <router-link v-if="!isLoggedIn" to="/login" class="nav-link">登录</router-link>
+        <router-link
+          to="/"
+          class="nav-link"
+        >
+          首页
+        </router-link>
+        <router-link
+          v-if="!isLoggedIn"
+          to="/login"
+          class="nav-link"
+        >
+          登录
+        </router-link>
         <template v-else>
-          <router-link to="/dashboard" class="nav-link">仪表盘</router-link>
-          <el-button type="danger" size="small" @click="handleLogout">
+          <router-link
+            to="/dashboard"
+            class="nav-link"
+          >
+            仪表盘
+          </router-link>
+          <el-button
+            type="danger"
+            size="small"
+            @click="handleLogout"
+          >
             退出
           </el-button>
         </template>

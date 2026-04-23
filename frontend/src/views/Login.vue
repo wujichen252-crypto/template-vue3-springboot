@@ -27,8 +27,13 @@ const handleLogin = async (): Promise<void> => {
 <template>
   <div class="login-container">
     <div class="login-card">
-      <h1 class="login-title">登录</h1>
-      <el-form @submit.prevent="handleLogin" class="login-form">
+      <h1 class="login-title">
+        登录
+      </h1>
+      <el-form
+        class="login-form"
+        @submit.prevent="handleLogin"
+      >
         <el-form-item>
           <el-input
             v-model="username"
@@ -60,7 +65,9 @@ const handleLogin = async (): Promise<void> => {
         </el-form-item>
       </el-form>
       <div class="login-footer">
-        <router-link to="/register">还没有账号？去注册</router-link>
+        <router-link to="/register">
+          还没有账号？去注册
+        </router-link>
       </div>
     </div>
   </div>

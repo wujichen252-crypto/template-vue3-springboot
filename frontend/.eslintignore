@@ -1,0 +1,22 @@
+# 依赖目录
+node_modules/
+.pnpm-store/
+
+# 构建输出
+dist/
+build/
+*.min.js
+
+# 测试覆盖率
+coverage/
+
+# 日志文件
+*.log
+
+# 编辑器配置
+.vscode/
+.idea/
+
+# 临时文件
+*.tmp
+*.temp

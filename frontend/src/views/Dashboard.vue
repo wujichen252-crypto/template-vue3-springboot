@@ -16,10 +16,16 @@ onMounted(async () => {
 <template>
   <div class="dashboard-container">
     <div class="dashboard-header">
-      <h1 class="dashboard-title">仪表盘</h1>
+      <h1 class="dashboard-title">
+        仪表盘
+      </h1>
       <div class="user-info">
         <span class="username">{{ userInfo?.username || 'User' }}</span>
-        <el-button @click="authStore.logout()" type="danger" size="small">
+        <el-button
+          type="danger"
+          size="small"
+          @click="authStore.logout()"
+        >
           退出登录
         </el-button>
       </div>
@@ -31,18 +37,31 @@ onMounted(async () => {
         </template>
         <div class="welcome-content">
           <p>您好，{{ userInfo?.username || 'User' }}！</p>
-          <p v-if="userInfo?.email">邮箱：{{ userInfo.email }}</p>
+          <p v-if="userInfo?.email">
+            邮箱：{{ userInfo.email }}
+          </p>
         </div>
       </el-card>
       <el-card class="stats-card">
         <template #header>
           <span>系统信息</span>
         </template>
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="前端框架">Vue 3.4 + TypeScript</el-descriptions-item>
-          <el-descriptions-item label="后端框架">Spring Boot 3.2</el-descriptions-item>
-          <el-descriptions-item label="UI 库">Element Plus</el-descriptions-item>
-          <el-descriptions-item label="样式方案">Tailwind CSS</el-descriptions-item>
+        <el-descriptions
+          :column="2"
+          border
+        >
+          <el-descriptions-item label="前端框架">
+            Vue 3.4 + TypeScript
+          </el-descriptions-item>
+          <el-descriptions-item label="后端框架">
+            Spring Boot 3.2
+          </el-descriptions-item>
+          <el-descriptions-item label="UI 库">
+            Element Plus
+          </el-descriptions-item>
+          <el-descriptions-item label="样式方案">
+            Tailwind CSS
+          </el-descriptions-item>
         </el-descriptions>
       </el-card>
     </div>

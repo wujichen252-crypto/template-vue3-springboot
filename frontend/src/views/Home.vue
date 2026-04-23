@@ -4,11 +4,25 @@
 <template>
   <div class="home-container">
     <div class="hero">
-      <h1 class="hero-title">Vue3 + Spring Boot 模板项目</h1>
-      <p class="hero-subtitle">前后端分离架构，快速启动你的下一个项目</p>
+      <h1 class="hero-title">
+        Vue3 + Spring Boot 模板项目
+      </h1>
+      <p class="hero-subtitle">
+        前后端分离架构，快速启动你的下一个项目
+      </p>
       <div class="hero-actions">
-        <router-link to="/login" class="btn btn-primary">快速开始</router-link>
-        <router-link to="/dashboard" class="btn btn-secondary">查看示例</router-link>
+        <router-link
+          to="/login"
+          class="btn btn-primary"
+        >
+          快速开始
+        </router-link>
+        <router-link
+          to="/dashboard"
+          class="btn btn-secondary"
+        >
+          查看示例
+        </router-link>
       </div>
     </div>
     <div class="features">

@@ -27,12 +27,26 @@ const handleRetry = (): void => {
 </script>
 
 <template>
-  <div v-if="hasError" class="error-boundary">
+  <div
+    v-if="hasError"
+    class="error-boundary"
+  >
     <div class="error-content">
-      <div class="error-icon">⚠️</div>
-      <h2 class="error-title">出错了</h2>
-      <p class="error-message">{{ errorMessage || fallback }}</p>
-      <button class="retry-button" @click="handleRetry">重试</button>
+      <div class="error-icon">
+        ⚠️
+      </div>
+      <h2 class="error-title">
+        出错了
+      </h2>
+      <p class="error-message">
+        {{ errorMessage || fallback }}
+      </p>
+      <button
+        class="retry-button"
+        @click="handleRetry"
+      >
+        重试
+      </button>
     </div>
   </div>
   <slot v-else />
