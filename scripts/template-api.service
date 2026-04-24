@@ -1,0 +1,22 @@
+[Unit]
+Description=Template Vue3 SpringBoot API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/template-api
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /www/template-api/template-api.jar
+Restart=always
+RestartSec=5
+Environment="SPRING_PROFILES_ACTIVE=prod"
+Environment="SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/template_db"
+Environment="SPRING_DATASOURCE_USERNAME=root"
+Environment="SPRING_DATASOURCE_PASSWORD=your_db_password"
+Environment="JWT_SECRET=your_jwt_secret_key"
+Environment="REDIS_HOST=127.0.0.1"
+Environment="REDIS_PORT=6379"
+Environment="REDIS_PASSWORD="
+
+[Install]
+WantedBy=multi-user.target

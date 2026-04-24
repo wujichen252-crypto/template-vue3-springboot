@@ -28,24 +28,38 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public TokenResponse login(LoginRequest request) {
+        User user = findUserByUsername(request.getUsername());
+        validateUserStatus(user);
+        validatePassword(request.getPassword(), user.getPasswordHash());
+        return generateTokenResponse(user.getId());
+    }
+
+    private User findUserByUsername(String username) {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(User::getUsername, request.getUsername());
+        wrapper.eq(User::getUsername, username);
         User user = userMapper.selectOne(wrapper);
 
         if (user == null) {
             throw new BusinessException(ResultCode.USERNAME_OR_PASSWORD_ERROR);
         }
+        return user;
+    }
 
-        if (!passwordUtil.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new BusinessException(ResultCode.USERNAME_OR_PASSWORD_ERROR);
-        }
-
+    private void validateUserStatus(User user) {
         if (user.getStatus() == 0) {
             throw new BusinessException(ResultCode.FORBIDDEN);
         }
+    }
 
-        String accessToken = jwtUtil.generateAccessToken(user.getId());
-        String refreshToken = jwtUtil.generateRefreshToken(user.getId());
+    private void validatePassword(String rawPassword, String encodedPassword) {
+        if (!passwordUtil.matches(rawPassword, encodedPassword)) {
+            throw new BusinessException(ResultCode.USERNAME_OR_PASSWORD_ERROR);
+        }
+    }
+
+    private TokenResponse generateTokenResponse(Long userId) {
+        String accessToken = jwtUtil.generateAccessToken(userId);
+        String refreshToken = jwtUtil.generateRefreshToken(userId);
 
         return TokenResponse.builder()
                 .accessToken(accessToken)
@@ -94,23 +108,14 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public TokenResponse refreshToken(String refreshToken) {
-        try {
-            String type = jwtUtil.getTypeFromToken(refreshToken);
-            if (!"refresh".equals(type)) {
-                throw new BusinessException(ResultCode.UNAUTHORIZED);
-            }
-            Long userId = jwtUtil.getUserIdFromToken(refreshToken);
-            String newAccessToken = jwtUtil.generateAccessToken(userId);
-            String newRefreshToken = jwtUtil.generateRefreshToken(userId);
+        validateRefreshTokenType(refreshToken);
+        Long userId = jwtUtil.getUserIdFromToken(refreshToken);
+        return generateTokenResponse(userId);
+    }
 
-            return TokenResponse.builder()
-                    .accessToken(newAccessToken)
-                    .refreshToken(newRefreshToken)
-                    .expiresIn(jwtUtil.getAccessExpire())
-                    .build();
-        } catch (BusinessException e) {
-            throw e;
-        } catch (Exception e) {
+    private void validateRefreshTokenType(String refreshToken) {
+        String type = jwtUtil.getTypeFromToken(refreshToken);
+        if (!"refresh".equals(type)) {
             throw new BusinessException(ResultCode.UNAUTHORIZED);
         }
     }

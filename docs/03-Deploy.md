@@ -51,25 +51,46 @@ java -jar template-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 
 5. 配置 Systemd 服务
 
+创建 `/etc/systemd/system/template-api.service`：
+
 ```ini
 [Unit]
-Description=Template API
-After=network.target mysql.service redis.service
+Description=Template Vue3 SpringBoot API
+After=network.target
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/path/to/app
-ExecStart=/usr/bin/java -jar template-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
+User=root
+WorkingDirectory=/www/template-api
+ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar /www/template-api/template-api.jar
 Restart=always
+RestartSec=5
+Environment="SPRING_PROFILES_ACTIVE=prod"
+Environment="SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/template_db"
+Environment="SPRING_DATASOURCE_USERNAME=root"
+Environment="SPRING_DATASOURCE_PASSWORD=your_db_password"
+Environment="JWT_SECRET=your_jwt_secret_key"
+Environment="REDIS_HOST=127.0.0.1"
+Environment="REDIS_PORT=6379"
+Environment="REDIS_PASSWORD="
 
 [Install]
 WantedBy=multi-user.target
 ```
 
+启用并启动服务：
+
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl enable template-api
 sudo systemctl start template-api
+sudo systemctl status template-api
+```
+
+查看日志：
+
+```bash
+sudo journalctl -u template-api -f
 ```
 
 ### 方式二：Docker 部署

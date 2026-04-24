@@ -1,0 +1,191 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '部署环境'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  FRONTEND_DIR: ${{ vars.PROJECT_FRONTEND_DIR || './frontend' }}
+  BACKEND_DIR: ${{ vars.PROJECT_BACKEND_DIR || './backend' }}
+  NODE_VER: ${{ vars.NODE_VERSION || '20' }}
+  JAVA_VER: ${{ vars.JAVA_VERSION || '17' }}
+  BUILD_TOOL: ${{ vars.BUILD_TOOL || 'maven' }}
+
+jobs:
+  build-frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.FRONTEND_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VER }}
+          cache: 'npm'
+          cache-dependency-path: '${{ env.FRONTEND_DIR }}/package-lock.json'
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: ${{ env.FRONTEND_DIR }}/dist
+          retention-days: 3
+
+  build-backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.BACKEND_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VER }}
+          distribution: 'temurin'
+          cache: ${{ env.BUILD_TOOL }}
+
+      - name: Build JAR (Maven)
+        if: env.BUILD_TOOL == 'maven'
+        run: mvn clean package -DskipTests=false -B
+
+      - name: Build JAR (Gradle)
+        if: env.BUILD_TOOL == 'gradle'
+        run: ./gradlew clean build
+
+      - name: Rename artifact
+        run: |
+          mkdir -p ../jars
+          if [ "${{ env.BUILD_TOOL }}" == "maven" ]; then
+            cp target/*.jar ../jars/app.jar
+          else
+            cp build/libs/*-SNAPSHOT.jar ../jars/app.jar 2>/dev/null || \
+            cp build/libs/*.jar ../jars/app.jar
+          fi
+          ls -la ../jars/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: ./jars/app.jar
+          retention-days: 3
+
+  deploy:
+    needs: [build-frontend, build-backend]
+    runs-on: ubuntu-latest
+
+    if: |
+      vars.DEPLOY_SERVER_HOST != '' &&
+      vars.DEPLOY_FRONTEND_PATH != '' &&
+      vars.DEPLOY_BACKEND_PATH != '' &&
+      secrets.SSH_PRIVATE_KEY != ''
+
+    steps:
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ./dist
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: ./jars
+
+      - name: Deploy Frontend
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.DEPLOY_SERVER_HOST }}
+          username: ${{ vars.DEPLOY_SERVER_USER || 'root' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ vars.DEPLOY_SERVER_PORT || '22' }}
+          source: "dist/*"
+          target: ${{ vars.DEPLOY_FRONTEND_PATH }}
+          strip_components: 1
+
+      - name: Deploy Backend JAR
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.DEPLOY_SERVER_HOST }}
+          username: ${{ vars.DEPLOY_SERVER_USER || 'root' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ vars.DEPLOY_SERVER_PORT || '22' }}
+          source: "jars/app.jar"
+          target: ${{ vars.DEPLOY_BACKEND_PATH }}/
+
+      - name: Execute Backend Deployment
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.DEPLOY_SERVER_HOST }}
+          username: ${{ vars.DEPLOY_SERVER_USER || 'root' }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ vars.DEPLOY_SERVER_PORT || '22' }}
+          script: |
+            set -e
+
+            BACKEND_PATH="${{ vars.DEPLOY_BACKEND_PATH }}"
+            JAR_NAME="${{ vars.DEPLOY_JAR_NAME || 'app.jar' }}"
+            SERVICE_NAME="${{ vars.DEPLOY_SERVICE_NAME || 'template-api' }}"
+            APP_PORT="${{ vars.APP_PORT || '8080' }}"
+            JAVA_OPTS="${{ vars.JAVA_OPTS || '-Xms256m -Xmx512m' }}"
+            SPRING_PROFILE="${{ vars.SPRING_PROFILE || 'prod' }}"
+            ENABLE_FLYWAY="${{ vars.ENABLE_FLYWAY || 'true' }}"
+            RESTART_CMD="${{ vars.DEPLOY_RESTART_COMMAND || 'sudo systemctl restart template-api' }}"
+
+            echo "===== 开始部署 Spring Boot 后端 ====="
+
+            cd "$BACKEND_PATH"
+
+            if [ -f "$JAR_NAME" ]; then
+              BACKUP_NAME="${JAR_NAME}.bak.$(date +%Y%m%d_%H%M%S)"
+              cp "$JAR_NAME" "$BACKUP_NAME"
+              echo "已备份旧版本: $BACKUP_NAME"
+            fi
+
+            if [ "$JAR_NAME" != "app.jar" ]; then
+              mv app.jar "$JAR_NAME"
+            fi
+
+            if [ "$ENABLE_FLYWAY" == "true" ] && command -v java &> /dev/null; then
+              echo "Flyway 迁移由 Spring Boot 启动时自动执行"
+            fi
+
+            echo "重启服务: $SERVICE_NAME"
+            eval "$RESTART_CMD"
+
+            sleep 8
+            HEALTH_URL="http://127.0.0.1:${APP_PORT}/actuator/health"
+            echo "健康检查: $HEALTH_URL"
+
+            if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+              echo "健康检查通过 ✅"
+            else
+              echo "健康检查未通过，等待 5 秒重试..."
+              sleep 5
+              if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
+                echo "健康检查通过 ✅"
+              else
+                echo "健康检查失败 ❌，请手动检查日志: journalctl -u $SERVICE_NAME -n 50"
+                exit 1
+              fi
+            fi
+
+            echo "===== 后端部署完成 ====="
+
+      - name: Notify
+        if: vars.DEPLOY_NOTIFY_WEBHOOK != ''
+        run: |
+          curl -X POST ${{ vars.DEPLOY_NOTIFY_WEBHOOK }} \
+            -H 'Content-Type: application/json' \
+            -d '{"msg":"[Spring Boot] 部署成功: ${{ github.repository }}@${{ github.sha }}"}' || true
