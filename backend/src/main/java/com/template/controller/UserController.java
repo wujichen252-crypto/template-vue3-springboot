@@ -1,5 +1,6 @@
 package com.template.controller;
 
+import com.template.annotation.CurrentUser;
 import com.template.common.result.ApiResult;
 import com.template.dto.LoginRequest;
 import com.template.dto.RegisterRequest;
@@ -9,7 +10,6 @@ import com.template.vo.TokenResponse;
 import com.template.vo.UserResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -33,8 +33,8 @@ public class UserController {
     }
 
     @GetMapping("/users/me")
-    public ApiResult<UserResponse> getCurrentUser(@AuthenticationPrincipal(expression = "#this instanceof T(org.springframework.security.core.userdetails.UserDetails) ? #this.username : #this") String userId) {
-        UserResponse user = userService.getCurrentUser(Long.parseLong(userId));
+    public ApiResult<UserResponse> getCurrentUser(@CurrentUser Long userId) {
+        UserResponse user = userService.getCurrentUser(userId);
         return ApiResult.success(user);
     }
 
@@ -45,7 +45,7 @@ public class UserController {
     }
 
     @PostMapping("/auth/logout")
-    public ApiResult<Void> logout(@AuthenticationPrincipal(expression = "#this instanceof T(org.springframework.security.core.userdetails.UserDetails) ? #this.username : #this") String userId,
+    public ApiResult<Void> logout(@CurrentUser Long userId,
                                   @RequestHeader("Authorization") String authHeader) {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);

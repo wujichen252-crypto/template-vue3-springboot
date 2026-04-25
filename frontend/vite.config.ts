@@ -50,9 +50,7 @@ export default defineConfig(({ mode }) => {
             'element-plus': ['element-plus'],
             'vue-vendor': ['vue', 'vue-router', 'pinia']
           }
-        },
-        // CDN 外部化大型依赖（生产环境）
-        external: isProduction ? ['vue', 'vue-router', 'pinia', 'element-plus', 'axios'] : []
+        }
       }
     }
   }

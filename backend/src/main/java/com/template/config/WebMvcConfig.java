@@ -1,8 +1,10 @@
 package com.template.config;
 
+import com.template.interceptor.CurrentUserArgumentResolver;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
@@ -10,6 +12,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private String[] allowedOrigins;
+
+    private final CurrentUserArgumentResolver currentUserArgumentResolver;
+
+    public WebMvcConfig(CurrentUserArgumentResolver currentUserArgumentResolver) {
+        this.currentUserArgumentResolver = currentUserArgumentResolver;
+    }
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -19,5 +27,10 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .allowedHeaders("*")
                 .allowCredentials(true)
                 .maxAge(3600);
+    }
+
+    @Override
+    public void addArgumentResolvers(java.util.List<org.springframework.web.method.support.HandlerMethodArgumentResolver> resolvers) {
+        resolvers.add(currentUserArgumentResolver);
     }
 }
