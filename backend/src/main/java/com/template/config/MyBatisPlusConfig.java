@@ -13,10 +13,16 @@ import java.time.LocalDateTime;
 @Configuration
 public class MyBatisPlusConfig {
 
+    /**
+     * MyBatis Plus 插件配置
+     */
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
         MybatisPlusInterceptor interceptor = new MybatisPlusInterceptor();
-        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        // 分页插件
+        PaginationInnerInterceptor paginationInterceptor = new PaginationInnerInterceptor(DbType.MYSQL);
+        paginationInterceptor.setMaxLimit(1000L);
+        interceptor.addInnerInterceptor(paginationInterceptor);
         return interceptor;
     }
 
@@ -27,6 +33,7 @@ public class MyBatisPlusConfig {
             public void insertFill(MetaObject metaObject) {
                 this.strictInsertFill(metaObject, "createdAt", LocalDateTime.class, LocalDateTime.now());
                 this.strictInsertFill(metaObject, "updatedAt", LocalDateTime.class, LocalDateTime.now());
+                this.strictInsertFill(metaObject, "deletedAt", Integer.class, 0);
             }
 
             @Override

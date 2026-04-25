@@ -2,6 +2,7 @@ package com.template.service.impl;
 
 import com.template.service.TokenBlacklistService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -9,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "spring.data.redis.host", matchIfMissing = false)
 public class TokenBlacklistServiceImpl implements TokenBlacklistService {
 
     private static final String BLACKLIST_PREFIX = "token:blacklist:";

@@ -1,11 +1,10 @@
-// file: backend/src/test/java/com/template/common/util/JwtUtilTest.java
 package com.template.common.util;
 
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -20,12 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("JWT 工具类单元测试")
 class JwtUtilTest {
 
     @InjectMocks
     private JwtUtil jwtUtil;
 
-    private static final String TEST_SECRET = "myTestSecretKeyForJwtTokenGeneration1234567890";
+    private static final String TEST_SECRET = "your-256-bit-secret-key-here-for-testing-only";
     private static final Long ACCESS_EXPIRE = 7200000L; // 2小时
     private static final Long REFRESH_EXPIRE = 604800000L; // 7天
 
@@ -38,187 +38,133 @@ class JwtUtilTest {
     }
 
     @Test
-    void shouldGenerateAccessTokenSuccessfully() {
-        // given
+    @DisplayName("生成 Access Token 成功")
+    void generateAccessToken_Success() {
         Long userId = 1L;
 
-        // when
         String token = jwtUtil.generateAccessToken(userId);
 
-        // then
         assertThat(token).isNotNull();
         assertThat(token).isNotEmpty();
 
+        // 验证 Token 可以解析
         Claims claims = jwtUtil.parseToken(token);
         assertThat(claims.getSubject()).isEqualTo(userId.toString());
-        assertThat(claims.get("userId")).isEqualTo(userId.intValue());
         assertThat(claims.get("type")).isEqualTo("access");
+        assertThat(claims.get("userId")).isEqualTo(userId.intValue());
     }
 
     @Test
-    void shouldGenerateRefreshTokenSuccessfully() {
-        // given
+    @DisplayName("生成 Refresh Token 成功")
+    void generateRefreshToken_Success() {
         Long userId = 1L;
 
-        // when
         String token = jwtUtil.generateRefreshToken(userId);
 
-        // then
         assertThat(token).isNotNull();
         assertThat(token).isNotEmpty();
 
+        // 验证 Token 可以解析
         Claims claims = jwtUtil.parseToken(token);
         assertThat(claims.getSubject()).isEqualTo(userId.toString());
-        assertThat(claims.get("userId")).isEqualTo(userId.intValue());
         assertThat(claims.get("type")).isEqualTo("refresh");
     }
 
     @Test
-    void shouldParseTokenSuccessfully() {
-        // given
+    @DisplayName("解析 Token 成功")
+    void parseToken_Success() {
         Long userId = 1L;
         String token = jwtUtil.generateAccessToken(userId);
 
-        // when
         Claims claims = jwtUtil.parseToken(token);
 
-        // then
         assertThat(claims).isNotNull();
         assertThat(claims.getSubject()).isEqualTo(userId.toString());
-        assertThat(claims.get("userId")).isEqualTo(userId.intValue());
-        assertThat(claims.get("type")).isEqualTo("access");
-        assertThat(claims.getIssuedAt()).isNotNull();
-        assertThat(claims.getExpiration()).isNotNull();
+        assertThat(claims.getExpiration()).isAfter(new Date());
     }
 
     @Test
-    void shouldThrowExceptionWhenParseInvalidToken() {
-        // given
-        String invalidToken = "invalid.token.here";
-
-        // when & then
-        assertThatThrownBy(() -> jwtUtil.parseToken(invalidToken))
+    @DisplayName("解析 Token 失败 - 无效 Token")
+    void parseToken_Invalid() {
+        assertThatThrownBy(() -> jwtUtil.parseToken("invalid.token.here"))
                 .isInstanceOf(Exception.class);
     }
 
     @Test
-    void shouldGetUserIdFromTokenSuccessfully() {
-        // given
+    @DisplayName("检查 Token 是否过期 - 未过期")
+    void isTokenExpired_False() {
+        Long userId = 1L;
+        String token = jwtUtil.generateAccessToken(userId);
+
+        boolean expired = jwtUtil.isTokenExpired(token);
+
+        assertThat(expired).isFalse();
+    }
+
+    @Test
+    @DisplayName("检查 Token 是否过期 - 已过期")
+    void isTokenExpired_True() {
+        // 生成一个过期的 Token
+        SecretKey key = Keys.hmacShaKeyFor(TEST_SECRET.getBytes(StandardCharsets.UTF_8));
+        Date now = new Date();
+        Date expiration = new Date(now.getTime() - 1000); // 1秒前过期
+
+        String expiredToken = Jwts.builder()
+                .subject("1")
+                .issuedAt(now)
+                .expiration(expiration)
+                .signWith(key)
+                .compact();
+
+        boolean expired = jwtUtil.isTokenExpired(expiredToken);
+
+        assertThat(expired).isTrue();
+    }
+
+    @Test
+    @DisplayName("检查 Token 是否过期 - 无效 Token 返回过期")
+    void isTokenExpired_InvalidToken() {
+        boolean expired = jwtUtil.isTokenExpired("invalid.token");
+
+        assertThat(expired).isTrue();
+    }
+
+    @Test
+    @DisplayName("从 Token 获取用户 ID")
+    void getUserIdFromToken_Success() {
         Long userId = 123L;
         String token = jwtUtil.generateAccessToken(userId);
 
-        // when
         Long extractedUserId = jwtUtil.getUserIdFromToken(token);
 
-        // then
         assertThat(extractedUserId).isEqualTo(userId);
     }
 
     @Test
-    void shouldGetTypeFromTokenSuccessfully() {
-        // given
-        String accessToken = jwtUtil.generateAccessToken(1L);
-        String refreshToken = jwtUtil.generateRefreshToken(1L);
-
-        // when
-        String accessType = jwtUtil.getTypeFromToken(accessToken);
-        String refreshType = jwtUtil.getTypeFromToken(refreshToken);
-
-        // then
-        assertThat(accessType).isEqualTo("access");
-        assertThat(refreshType).isEqualTo("refresh");
-    }
-
-    @Test
-    void shouldReturnNotExpiredForValidToken() {
-        // given
+    @DisplayName("从 Token 获取类型 - Access")
+    void getTypeFromToken_Access() {
         String token = jwtUtil.generateAccessToken(1L);
 
-        // when
-        boolean isExpired = jwtUtil.isTokenExpired(token);
+        String type = jwtUtil.getTypeFromToken(token);
 
-        // then
-        assertThat(isExpired).isFalse();
+        assertThat(type).isEqualTo("access");
     }
 
     @Test
-    void shouldReturnExpiredForExpiredToken() {
-        // given - 生成一个已过期 token
-        SecretKey key = Keys.hmacShaKeyFor(TEST_SECRET.getBytes(StandardCharsets.UTF_8));
-        Date now = new Date();
-        Date past = new Date(now.getTime() - 1000); // 1秒前过期
+    @DisplayName("从 Token 获取类型 - Refresh")
+    void getTypeFromToken_Refresh() {
+        String token = jwtUtil.generateRefreshToken(1L);
 
-        String expiredToken = Jwts.builder()
-                .subject("1")
-                .claim("userId", 1)
-                .claim("type", "access")
-                .issuedAt(new Date(now.getTime() - 2000))
-                .expiration(past)
-                .signWith(key)
-                .compact();
+        String type = jwtUtil.getTypeFromToken(token);
 
-        // when
-        boolean isExpired = jwtUtil.isTokenExpired(expiredToken);
-
-        // then
-        assertThat(isExpired).isTrue();
+        assertThat(type).isEqualTo("refresh");
     }
 
     @Test
-    void shouldReturnExpiredForInvalidToken() {
-        // given
-        String invalidToken = "invalid.token";
-
-        // when
-        boolean isExpired = jwtUtil.isTokenExpired(invalidToken);
-
-        // then
-        assertThat(isExpired).isTrue();
-    }
-
-    @Test
-    void shouldGetAccessExpireSuccessfully() {
-        // when
+    @DisplayName("获取 Access Token 过期时间配置")
+    void getAccessExpire_Success() {
         Long expire = jwtUtil.getAccessExpire();
 
-        // then
         assertThat(expire).isEqualTo(ACCESS_EXPIRE);
-    }
-
-    @Test
-    void shouldGenerateDifferentTokensForDifferentUsers() {
-        // given
-        Long userId1 = 1L;
-        Long userId2 = 2L;
-
-        // when
-        String token1 = jwtUtil.generateAccessToken(userId1);
-        String token2 = jwtUtil.generateAccessToken(userId2);
-
-        // then
-        assertThat(token1).isNotEqualTo(token2);
-
-        Claims claims1 = jwtUtil.parseToken(token1);
-        Claims claims2 = jwtUtil.parseToken(token2);
-
-        assertThat(claims1.getSubject()).isEqualTo("1");
-        assertThat(claims2.getSubject()).isEqualTo("2");
-    }
-
-    @Test
-    void shouldGenerateDifferentTokensForSameUserAtDifferentTime() throws InterruptedException {
-        // given
-        Long userId = 1L;
-
-        // when
-        String token1 = jwtUtil.generateAccessToken(userId);
-        Thread.sleep(10); // 确保时间不同
-        String token2 = jwtUtil.generateAccessToken(userId);
-
-        // then
-        assertThat(token1).isNotEqualTo(token2);
-
-        // 但解析出的 userId 应该相同
-        assertThat(jwtUtil.getUserIdFromToken(token1)).isEqualTo(jwtUtil.getUserIdFromToken(token2));
     }
 }

@@ -19,9 +19,12 @@ env:
   BACKEND_DIR: ${{ vars.PROJECT_BACKEND_DIR || './backend' }}
   NODE_VER: ${{ vars.NODE_VERSION || '20' }}
   JAVA_VER: ${{ vars.JAVA_VERSION || '17' }}
-  BUILD_TOOL: ${{ vars.BUILD_TOOL || 'maven' }}
+  BUILD_TOOL: ${{ vars.BUILD_TOOL || 'gradle' }}
 
 jobs:
+  # ==========================================
+  # Job 1: 构建前端
+  # ==========================================
   build-frontend:
     runs-on: ubuntu-latest
     defaults:
@@ -29,19 +32,32 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
     steps:
       - uses: actions/checkout@v4
+      
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VER }}
-          cache: 'npm'
-          cache-dependency-path: '${{ env.FRONTEND_DIR }}/package-lock.json'
-      - run: npm ci
-      - run: npm run build
+          cache: 'pnpm'
+          cache-dependency-path: '${{ env.FRONTEND_DIR }}/pnpm-lock.yaml'
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build frontend
+        run: pnpm run build
+      
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist
           path: ${{ env.FRONTEND_DIR }}/dist
           retention-days: 3
 
+  # ==========================================
+  # Job 2: 构建后端 JAR (Gradle)
+  # ==========================================
   build-backend:
     runs-on: ubuntu-latest
     defaults:
@@ -49,60 +65,65 @@ jobs:
         working-directory: ${{ env.BACKEND_DIR }}
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VER }}
           distribution: 'temurin'
-          cache: ${{ env.BUILD_TOOL }}
-
-      - name: Build JAR (Maven)
-        if: env.BUILD_TOOL == 'maven'
-        run: mvn clean package -DskipTests=false -B
-
-      - name: Build JAR (Gradle)
-        if: env.BUILD_TOOL == 'gradle'
-        run: ./gradlew clean build
-
-      - name: Rename artifact
+      
+      # Gradle 缓存优化
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.7
+      
+      # 构建 JAR (包含测试)
+      - name: Build JAR with Gradle
+        run: ./gradlew clean bootJar --no-daemon
+      
+      # 统一产物名称
+      - name: Prepare artifact
         run: |
           mkdir -p ../jars
-          if [ "${{ env.BUILD_TOOL }}" == "maven" ]; then
-            cp target/*.jar ../jars/app.jar
-          else
-            cp build/libs/*-SNAPSHOT.jar ../jars/app.jar 2>/dev/null || \
-            cp build/libs/*.jar ../jars/app.jar
-          fi
+          cp build/libs/*.jar ../jars/app.jar
           ls -la ../jars/
-
+      
       - uses: actions/upload-artifact@v4
         with:
           name: backend-jar
           path: ./jars/app.jar
           retention-days: 3
 
+  # ==========================================
+  # Job 3: 部署
+  # ==========================================
   deploy:
     needs: [build-frontend, build-backend]
     runs-on: ubuntu-latest
-
+    
+    # 防御性条件：关键变量未配置时直接跳过
     if: |
       vars.DEPLOY_SERVER_HOST != '' &&
       vars.DEPLOY_FRONTEND_PATH != '' &&
       vars.DEPLOY_BACKEND_PATH != '' &&
       secrets.SSH_PRIVATE_KEY != ''
-
+    
     steps:
+      # 下载前端产物
       - name: Download frontend artifact
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: ./dist
-
+      
+      # 下载后端 JAR
       - name: Download backend artifact
         uses: actions/download-artifact@v4
         with:
           name: backend-jar
           path: ./jars
 
+      # 部署前端静态文件
       - name: Deploy Frontend
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -114,6 +135,7 @@ jobs:
           target: ${{ vars.DEPLOY_FRONTEND_PATH }}
           strip_components: 1
 
+      # 部署后端 JAR
       - name: Deploy Backend JAR
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -124,6 +146,7 @@ jobs:
           source: "jars/app.jar"
           target: ${{ vars.DEPLOY_BACKEND_PATH }}/
 
+      # 服务器端替换、迁移、重启
       - name: Execute Backend Deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -133,7 +156,7 @@ jobs:
           port: ${{ vars.DEPLOY_SERVER_PORT || '22' }}
           script: |
             set -e
-
+            
             BACKEND_PATH="${{ vars.DEPLOY_BACKEND_PATH }}"
             JAR_NAME="${{ vars.DEPLOY_JAR_NAME || 'app.jar' }}"
             SERVICE_NAME="${{ vars.DEPLOY_SERVICE_NAME || 'template-api' }}"
@@ -142,32 +165,37 @@ jobs:
             SPRING_PROFILE="${{ vars.SPRING_PROFILE || 'prod' }}"
             ENABLE_FLYWAY="${{ vars.ENABLE_FLYWAY || 'true' }}"
             RESTART_CMD="${{ vars.DEPLOY_RESTART_COMMAND || 'sudo systemctl restart template-api' }}"
-
+            
             echo "===== 开始部署 Spring Boot 后端 ====="
-
+            
             cd "$BACKEND_PATH"
-
+            
+            # 备份旧 JAR
             if [ -f "$JAR_NAME" ]; then
               BACKUP_NAME="${JAR_NAME}.bak.$(date +%Y%m%d_%H%M%S)"
               cp "$JAR_NAME" "$BACKUP_NAME"
               echo "已备份旧版本: $BACKUP_NAME"
             fi
-
+            
+            # 替换新 JAR
             if [ "$JAR_NAME" != "app.jar" ]; then
               mv app.jar "$JAR_NAME"
             fi
-
-            if [ "$ENABLE_FLYWAY" == "true" ] && command -v java &> /dev/null; then
+            
+            # Flyway 迁移由 Spring Boot 启动时自动执行
+            if [ "$ENABLE_FLYWAY" == "true" ]; then
               echo "Flyway 迁移由 Spring Boot 启动时自动执行"
             fi
-
+            
+            # 重启服务
             echo "重启服务: $SERVICE_NAME"
             eval "$RESTART_CMD"
-
+            
+            # 健康检查（Spring Boot Actuator）
             sleep 8
             HEALTH_URL="http://127.0.0.1:${APP_PORT}/actuator/health"
             echo "健康检查: $HEALTH_URL"
-
+            
             if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
               echo "健康检查通过 ✅"
             else
@@ -180,9 +208,10 @@ jobs:
                 exit 1
               fi
             fi
-
+            
             echo "===== 后端部署完成 ====="
 
+      # 部署通知
       - name: Notify
         if: vars.DEPLOY_NOTIFY_WEBHOOK != ''
         run: |

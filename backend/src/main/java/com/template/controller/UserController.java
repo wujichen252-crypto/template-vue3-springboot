@@ -33,8 +33,8 @@ public class UserController {
     }
 
     @GetMapping("/users/me")
-    public ApiResult<UserResponse> getCurrentUser(@AuthenticationPrincipal Long userId) {
-        UserResponse user = userService.getCurrentUser(userId);
+    public ApiResult<UserResponse> getCurrentUser(@AuthenticationPrincipal(expression = "#this instanceof T(org.springframework.security.core.userdetails.UserDetails) ? #this.username : #this") String userId) {
+        UserResponse user = userService.getCurrentUser(Long.parseLong(userId));
         return ApiResult.success(user);
     }
 
@@ -45,7 +45,7 @@ public class UserController {
     }
 
     @PostMapping("/auth/logout")
-    public ApiResult<Void> logout(@AuthenticationPrincipal Long userId,
+    public ApiResult<Void> logout(@AuthenticationPrincipal(expression = "#this instanceof T(org.springframework.security.core.userdetails.UserDetails) ? #this.username : #this") String userId,
                                   @RequestHeader("Authorization") String authHeader) {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);

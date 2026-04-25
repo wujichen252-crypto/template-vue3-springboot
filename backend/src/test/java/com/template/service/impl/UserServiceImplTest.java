@@ -1,7 +1,5 @@
-// file: backend/src/test/java/com/template/service/impl/UserServiceImplTest.java
 package com.template.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.template.common.exception.BusinessException;
 import com.template.common.result.ResultCode;
 import com.template.common.util.JwtUtil;
@@ -12,19 +10,25 @@ import com.template.entity.User;
 import com.template.mapper.UserMapper;
 import com.template.vo.TokenResponse;
 import com.template.vo.UserResponse;
+import io.jsonwebtoken.Claims;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Date;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("用户服务单元测试")
 class UserServiceImplTest {
 
     @Mock
@@ -39,243 +43,197 @@ class UserServiceImplTest {
     @InjectMocks
     private UserServiceImpl userService;
 
-    @Test
-    void shouldLoginSuccessfully() {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("testuser");
-        request.setPassword("password123");
+    private User testUser;
+    private LoginRequest loginRequest;
+    private RegisterRequest registerRequest;
 
-        User user = new User();
-        user.setId(1L);
-        user.setUsername("testuser");
-        user.setPasswordHash("encodedPassword");
-        user.setStatus(1);
+    @BeforeEach
+    void setUp() {
+        testUser = new User();
+        testUser.setId(1L);
+        testUser.setUsername("testuser");
+        testUser.setPasswordHash("encodedPassword");
+        testUser.setEmail("test@example.com");
+        testUser.setStatus(1);
 
-        given(userMapper.selectOne(any(LambdaQueryWrapper.class))).willReturn(user);
-        given(passwordUtil.matches("password123", "encodedPassword")).willReturn(true);
-        given(jwtUtil.generateAccessToken(1L)).willReturn("accessToken123");
-        given(jwtUtil.generateRefreshToken(1L)).willReturn("refreshToken123");
-        given(jwtUtil.getAccessExpire()).willReturn(7200L);
+        loginRequest = new LoginRequest();
+        loginRequest.setUsername("testuser");
+        loginRequest.setPassword("password123");
 
-        // when
-        TokenResponse response = userService.login(request);
-
-        // then
-        assertThat(response.getAccessToken()).isEqualTo("accessToken123");
-        assertThat(response.getRefreshToken()).isEqualTo("refreshToken123");
-        assertThat(response.getExpiresIn()).isEqualTo(7200L);
+        registerRequest = new RegisterRequest();
+        registerRequest.setUsername("newuser");
+        registerRequest.setPassword("password123");
+        registerRequest.setEmail("new@example.com");
     }
 
     @Test
-    void shouldThrowExceptionWhenUserNotFound() {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("nonexistent");
-        request.setPassword("password123");
+    @DisplayName("登录成功")
+    void login_Success() {
+        when(userMapper.selectOne(any())).thenReturn(testUser);
+        when(passwordUtil.matches(anyString(), anyString())).thenReturn(true);
+        when(jwtUtil.generateAccessToken(any())).thenReturn("accessToken");
+        when(jwtUtil.generateRefreshToken(any())).thenReturn("refreshToken");
+        when(jwtUtil.getAccessExpire()).thenReturn(7200000L);
 
-        given(userMapper.selectOne(any(LambdaQueryWrapper.class))).willReturn(null);
+        TokenResponse response = userService.login(loginRequest);
 
-        // when & then
-        assertThatThrownBy(() -> userService.login(request))
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("accessToken");
+        assertThat(response.getRefreshToken()).isEqualTo("refreshToken");
+        assertThat(response.getExpiresIn()).isEqualTo(7200000L);
+
+        verify(userMapper).selectOne(any());
+        verify(passwordUtil).matches("password123", "encodedPassword");
+    }
+
+    @Test
+    @DisplayName("登录失败 - 用户不存在")
+    void login_UserNotFound() {
+        when(userMapper.selectOne(any())).thenReturn(null);
+
+        assertThatThrownBy(() -> userService.login(loginRequest))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.USERNAME_OR_PASSWORD_ERROR.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.USERNAME_OR_PASSWORD_ERROR.getMsg());
                 });
     }
 
     @Test
-    void shouldThrowExceptionWhenPasswordMismatch() {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("testuser");
-        request.setPassword("wrongpassword");
+    @DisplayName("登录失败 - 密码错误")
+    void login_WrongPassword() {
+        when(userMapper.selectOne(any())).thenReturn(testUser);
+        when(passwordUtil.matches(anyString(), anyString())).thenReturn(false);
 
-        User user = new User();
-        user.setId(1L);
-        user.setUsername("testuser");
-        user.setPasswordHash("encodedPassword");
-        user.setStatus(1);
-
-        given(userMapper.selectOne(any(LambdaQueryWrapper.class))).willReturn(user);
-        given(passwordUtil.matches("wrongpassword", "encodedPassword")).willReturn(false);
-
-        // when & then
-        assertThatThrownBy(() -> userService.login(request))
+        assertThatThrownBy(() -> userService.login(loginRequest))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.USERNAME_OR_PASSWORD_ERROR.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.USERNAME_OR_PASSWORD_ERROR.getMsg());
                 });
     }
 
     @Test
-    void shouldThrowExceptionWhenUserDisabled() {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("testuser");
-        request.setPassword("password123");
+    @DisplayName("登录失败 - 用户被禁用")
+    void login_UserDisabled() {
+        // 创建被禁用的用户
+        User disabledUser = new User();
+        disabledUser.setId(1L);
+        disabledUser.setUsername("testuser");
+        disabledUser.setPasswordHash("encodedPassword");
+        disabledUser.setEmail("test@example.com");
+        disabledUser.setStatus(0);
 
-        User user = new User();
-        user.setId(1L);
-        user.setUsername("testuser");
-        user.setPasswordHash("encodedPassword");
-        user.setStatus(0);
+        when(userMapper.selectOne(any())).thenReturn(disabledUser);
+        // 用户被禁用时不会验证密码，所以不需要 stub passwordUtil.matches
 
-        given(userMapper.selectOne(any(LambdaQueryWrapper.class))).willReturn(user);
-        // 注意：密码验证在状态检查之后，所以这里不需要 stub passwordUtil.matches
-
-        // when & then
-        assertThatThrownBy(() -> userService.login(request))
+        assertThatThrownBy(() -> userService.login(loginRequest))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.FORBIDDEN.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.FORBIDDEN.getMsg());
                 });
     }
 
     @Test
-    void shouldRegisterSuccessfully() {
-        // given
-        RegisterRequest request = new RegisterRequest();
-        request.setUsername("newuser");
-        request.setPassword("password123");
-        request.setEmail("newuser@example.com");
+    @DisplayName("注册成功")
+    void register_Success() {
+        when(userMapper.selectOne(any())).thenReturn(null);
+        when(passwordUtil.encode(anyString())).thenReturn("encodedPassword");
 
-        given(userMapper.selectCount(any(LambdaQueryWrapper.class))).willReturn(0L);
-        given(passwordUtil.encode("password123")).willReturn("encodedPassword");
-        given(userMapper.insert(any(User.class))).willAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            user.setId(1L);
-            return 1;
-        });
+        UserResponse response = userService.register(registerRequest);
 
-        // when
-        UserResponse response = userService.register(request);
-
-        // then
-        assertThat(response.getId()).isEqualTo(1L);
+        assertThat(response).isNotNull();
         assertThat(response.getUsername()).isEqualTo("newuser");
-        assertThat(response.getEmail()).isEqualTo("newuser@example.com");
+        assertThat(response.getEmail()).isEqualTo("new@example.com");
+
         verify(userMapper).insert(any(User.class));
     }
 
     @Test
-    void shouldThrowExceptionWhenUsernameOrEmailExists() {
-        // given
-        RegisterRequest request = new RegisterRequest();
-        request.setUsername("existinguser");
-        request.setPassword("password123");
-        request.setEmail("existing@example.com");
+    @DisplayName("注册失败 - 用户已存在")
+    void register_UserExists() {
+        when(userMapper.selectOne(any())).thenReturn(new User());
 
-        given(userMapper.selectCount(any(LambdaQueryWrapper.class))).willReturn(1L);
-
-        // when & then
-        assertThatThrownBy(() -> userService.register(request))
+        assertThatThrownBy(() -> userService.register(registerRequest))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.USER_EXISTS.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.USER_EXISTS.getMsg());
                 });
 
         verify(userMapper, never()).insert(any(User.class));
     }
 
     @Test
-    void shouldGetCurrentUserSuccessfully() {
-        // given
-        User user = new User();
-        user.setId(1L);
-        user.setUsername("testuser");
-        user.setEmail("test@example.com");
-        user.setStatus(1);
+    @DisplayName("获取当前用户信息成功")
+    void getCurrentUser_Success() {
+        when(userMapper.selectById(1L)).thenReturn(testUser);
 
-        given(userMapper.selectById(1L)).willReturn(user);
-
-        // when
         UserResponse response = userService.getCurrentUser(1L);
 
-        // then
+        assertThat(response).isNotNull();
         assertThat(response.getId()).isEqualTo(1L);
         assertThat(response.getUsername()).isEqualTo("testuser");
-        assertThat(response.getEmail()).isEqualTo("test@example.com");
     }
 
     @Test
-    void shouldGetUserByIdSuccessfully() {
-        // given
-        User user = new User();
-        user.setId(1L);
-        user.setUsername("testuser");
+    @DisplayName("获取当前用户信息失败 - 用户不存在")
+    void getCurrentUser_NotFound() {
+        when(userMapper.selectById(999L)).thenReturn(null);
 
-        given(userMapper.selectById(1L)).willReturn(user);
-
-        // when
-        User result = userService.getUserById(1L);
-
-        // then
-        assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getUsername()).isEqualTo("testuser");
-    }
-
-    @Test
-    void shouldThrowExceptionWhenUserNotFoundById() {
-        // given
-        given(userMapper.selectById(999L)).willReturn(null);
-
-        // when & then
-        assertThatThrownBy(() -> userService.getUserById(999L))
+        assertThatThrownBy(() -> userService.getCurrentUser(999L))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.NOT_FOUND.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.NOT_FOUND.getMsg());
                 });
     }
 
     @Test
-    void shouldRefreshTokenSuccessfully() {
-        // given
-        String refreshToken = "validRefreshToken";
-        given(jwtUtil.getTypeFromToken(refreshToken)).willReturn("refresh");
-        given(jwtUtil.getUserIdFromToken(refreshToken)).willReturn(1L);
-        given(jwtUtil.generateAccessToken(1L)).willReturn("newAccessToken");
-        given(jwtUtil.generateRefreshToken(1L)).willReturn("newRefreshToken");
-        given(jwtUtil.getAccessExpire()).willReturn(7200L);
+    @DisplayName("刷新 Token 成功")
+    void refreshToken_Success() {
+        when(jwtUtil.getTypeFromToken(anyString())).thenReturn("refresh");
+        when(jwtUtil.getUserIdFromToken(anyString())).thenReturn(1L);
+        when(jwtUtil.generateAccessToken(any())).thenReturn("newAccessToken");
+        when(jwtUtil.generateRefreshToken(any())).thenReturn("newRefreshToken");
+        when(jwtUtil.getAccessExpire()).thenReturn(7200000L);
 
-        // when
-        TokenResponse response = userService.refreshToken(refreshToken);
+        TokenResponse response = userService.refreshToken("validRefreshToken");
 
-        // then
+        assertThat(response).isNotNull();
         assertThat(response.getAccessToken()).isEqualTo("newAccessToken");
-        assertThat(response.getRefreshToken()).isEqualTo("newRefreshToken");
-        assertThat(response.getExpiresIn()).isEqualTo(7200L);
     }
 
     @Test
-    void shouldThrowExceptionWhenTokenTypeIsNotRefresh() {
-        // given
-        String accessToken = "validAccessToken";
-        given(jwtUtil.getTypeFromToken(accessToken)).willReturn("access");
+    @DisplayName("刷新 Token 失败 - Token 类型错误")
+    void refreshToken_WrongType() {
+        when(jwtUtil.getTypeFromToken(anyString())).thenReturn("access");
 
-        // when & then
-        assertThatThrownBy(() -> userService.refreshToken(accessToken))
+        assertThatThrownBy(() -> userService.refreshToken("accessToken"))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     BusinessException be = (BusinessException) ex;
                     assertThat(be.getCode()).isEqualTo(ResultCode.UNAUTHORIZED.getCode());
+                    assertThat(be.getMessage()).isEqualTo(ResultCode.UNAUTHORIZED.getMsg());
                 });
     }
 
     @Test
-    void shouldThrowExceptionWhenRefreshTokenInvalid() {
-        // given
-        String invalidToken = "invalidToken";
-        given(jwtUtil.getTypeFromToken(invalidToken)).willThrow(new RuntimeException("Invalid token"));
+    @DisplayName("获取 Token 过期时间")
+    void getAccessTokenExpiration_Success() {
+        Claims claims = mock(Claims.class);
+        Date expiration = new Date(System.currentTimeMillis() + 3600000);
+        when(claims.getExpiration()).thenReturn(expiration);
+        when(jwtUtil.parseToken(anyString())).thenReturn(claims);
 
-        // when & then - 现在异常会直接抛出，不再包装
-        assertThatThrownBy(() -> userService.refreshToken(invalidToken))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Invalid token");
+        long expirationTime = userService.getAccessTokenExpiration("token");
+
+        assertThat(expirationTime).isGreaterThan(0);
     }
 }

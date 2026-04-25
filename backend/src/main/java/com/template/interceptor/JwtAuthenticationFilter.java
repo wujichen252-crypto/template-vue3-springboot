@@ -2,6 +2,7 @@ package com.template.interceptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.template.common.result.ApiResult;
+import com.template.common.result.RequestIdUtil;
 import com.template.common.result.ResultCode;
 import com.template.common.util.JwtUtil;
 import com.template.service.TokenBlacklistService;
@@ -26,7 +27,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtUtil jwtUtil;
     private final TokenBlacklistService tokenBlacklistService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -73,7 +74,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private void writeErrorResponse(HttpServletResponse response, ResultCode resultCode) throws IOException {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");
-        ApiResult<Void> result = ApiResult.error(resultCode);
+        ApiResult<Void> result = ApiResult.error(resultCode.getCode(), resultCode.getMsg());
         response.getWriter().write(objectMapper.writeValueAsString(result));
     }
 }

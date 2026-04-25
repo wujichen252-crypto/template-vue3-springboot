@@ -14,6 +14,8 @@ import com.template.vo.TokenResponse;
 import com.template.vo.UserResponse;
 import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
@@ -69,14 +71,15 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @CacheEvict(value = "userList", allEntries = true)
     public UserResponse register(RegisterRequest request) {
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(User::getUsername, request.getUsername())
                 .or()
                 .eq(User::getEmail, request.getEmail());
-        Long count = userMapper.selectCount(wrapper);
+        User existingUser = userMapper.selectOne(wrapper);
 
-        if (count > 0) {
+        if (existingUser != null) {
             throw new BusinessException(ResultCode.USER_EXISTS);
         }
 
@@ -98,6 +101,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Cacheable(value = "user", key = "#userId")
     public User getUserById(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {

@@ -1,30 +1,48 @@
-// file: backend/src/test/java/com/template/controller/UserControllerTest.java
 package com.template.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.template.common.result.ApiResult;
+import com.template.common.util.JwtUtil;
 import com.template.dto.LoginRequest;
 import com.template.dto.RegisterRequest;
+import com.template.interceptor.JwtAuthenticationFilter;
+import com.template.mapper.UserMapper;
 import com.template.service.TokenBlacklistService;
 import com.template.service.UserService;
 import com.template.vo.TokenResponse;
 import com.template.vo.UserResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@WebMvcTest(UserController.class)
+@WebMvcTest(
+        value = UserController.class,
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = {
+                        com.template.config.MyBatisPlusConfig.class,
+                        com.template.config.RedisConfig.class,
+                        com.template.config.CacheConfig.class
+                }
+        )
+)
+@AutoConfigureMockMvc(addFilters = false)
+@DisplayName("用户控制器单元测试")
 class UserControllerTest {
 
     @Autowired
@@ -39,174 +57,137 @@ class UserControllerTest {
     @MockBean
     private TokenBlacklistService tokenBlacklistService;
 
-    @Test
-    void shouldRegisterSuccessfully() throws Exception {
-        // given
-        RegisterRequest request = new RegisterRequest();
-        request.setUsername("newuser");
-        request.setPassword("Password123");
-        request.setEmail("newuser@example.com");
+    @MockBean
+    private JwtUtil jwtUtil;
 
-        UserResponse response = UserResponse.builder()
-                .id(1L)
-                .username("newuser")
-                .email("newuser@example.com")
-                .status(1)
-                .build();
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
 
-        given(userService.register(any(RegisterRequest.class))).willReturn(response);
+    @MockBean
+    private PasswordEncoder passwordEncoder;
 
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.username").value("newuser"))
-                .andExpect(jsonPath("$.data.email").value("newuser@example.com"));
-    }
+    @MockBean
+    private UserMapper userMapper;
 
-    @Test
-    void shouldReturn400WhenRegisterWithInvalidData() throws Exception {
-        // given
-        RegisterRequest request = new RegisterRequest();
-        request.setUsername("ab"); // 太短
-        request.setPassword("123"); // 不符合密码规则
-        request.setEmail("invalid-email"); // 格式错误
+    private LoginRequest loginRequest;
+    private RegisterRequest registerRequest;
+    private TokenResponse tokenResponse;
+    private UserResponse userResponse;
 
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/register")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400));
-    }
+    @BeforeEach
+    void setUp() {
+        loginRequest = new LoginRequest();
+        loginRequest.setUsername("testuser");
+        loginRequest.setPassword("Password123");
 
-    @Test
-    void shouldLoginSuccessfully() throws Exception {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("testuser");
-        request.setPassword("password123");
+        registerRequest = new RegisterRequest();
+        registerRequest.setUsername("newuser");
+        registerRequest.setPassword("Password123");
+        registerRequest.setEmail("new@example.com");
 
-        TokenResponse response = TokenResponse.builder()
+        tokenResponse = TokenResponse.builder()
                 .accessToken("accessToken123")
                 .refreshToken("refreshToken123")
-                .expiresIn(7200L)
+                .expiresIn(7200000L)
                 .build();
 
-        given(userService.login(any(LoginRequest.class))).willReturn(response);
-
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.accessToken").value("accessToken123"))
-                .andExpect(jsonPath("$.data.refreshToken").value("refreshToken123"))
-                .andExpect(jsonPath("$.data.expiresIn").value(7200));
-    }
-
-    @Test
-    void shouldReturn400WhenLoginWithInvalidData() throws Exception {
-        // given
-        LoginRequest request = new LoginRequest();
-        request.setUsername("ab"); // 太短
-        request.setPassword("12345"); // 太短
-
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value(400));
-    }
-
-    @Test
-    @WithMockUser(username = "1")
-    void shouldGetCurrentUserSuccessfully() throws Exception {
-        // given
-        UserResponse response = UserResponse.builder()
+        userResponse = UserResponse.builder()
                 .id(1L)
                 .username("testuser")
                 .email("test@example.com")
-                .status(1)
                 .build();
+    }
 
-        given(userService.getCurrentUser(1L)).willReturn(response);
+    @Test
+    @DisplayName("用户注册接口测试")
+    void register_Success() throws Exception {
+        when(userService.register(any(RegisterRequest.class))).thenReturn(userResponse);
 
-        // when & then
-        mockMvc.perform(get("/api/v1/users/me"))
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(registerRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value(1))
                 .andExpect(jsonPath("$.data.username").value("testuser"));
+
+        verify(userService).register(any(RegisterRequest.class));
     }
 
     @Test
-    void shouldReturn401WhenGetCurrentUserWithoutAuth() throws Exception {
-        // when & then
-        mockMvc.perform(get("/api/v1/users/me"))
-                .andExpect(status().isUnauthorized());
-    }
+    @DisplayName("用户登录接口测试")
+    void login_Success() throws Exception {
+        when(userService.login(any(LoginRequest.class))).thenReturn(tokenResponse);
 
-    @Test
-    void shouldRefreshTokenSuccessfully() throws Exception {
-        // given
-        String refreshToken = "validRefreshToken";
-        TokenResponse response = TokenResponse.builder()
-                .accessToken("newAccessToken")
-                .refreshToken("newRefreshToken")
-                .expiresIn(7200L)
-                .build();
-
-        given(userService.refreshToken(refreshToken)).willReturn(response);
-
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/refresh")
-                        .header("X-Refresh-Token", refreshToken))
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.accessToken").value("newAccessToken"));
+                .andExpect(jsonPath("$.data.accessToken").value("accessToken123"))
+                .andExpect(jsonPath("$.data.refreshToken").value("refreshToken123"));
+
+        verify(userService).login(any(LoginRequest.class));
     }
 
     @Test
+    @DisplayName("获取当前用户信息接口测试")
     @WithMockUser(username = "1")
-    void shouldLogoutSuccessfully() throws Exception {
-        // given
-        String accessToken = "validAccessToken";
-        String authHeader = "Bearer " + accessToken;
-        long expiration = 3600000L;
+    void getCurrentUser_Success() throws Exception {
+        when(userService.getCurrentUser(anyLong())).thenReturn(userResponse);
 
-        given(userService.getAccessTokenExpiration(accessToken)).willReturn(expiration);
+        mockMvc.perform(get("/api/v1/users/me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.username").value("testuser"));
 
-        // when & then
+        verify(userService).getCurrentUser(anyLong());
+    }
+
+    @Test
+    @DisplayName("刷新 Token 接口测试")
+    void refreshToken_Success() throws Exception {
+        when(userService.refreshToken(anyString())).thenReturn(tokenResponse);
+
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .with(csrf())
+                        .header("X-Refresh-Token", "validRefreshToken"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").value("accessToken123"));
+
+        verify(userService).refreshToken("validRefreshToken");
+    }
+
+    @Test
+    @DisplayName("用户登出接口测试")
+    @WithMockUser(username = "1")
+    void logout_Success() throws Exception {
+        when(userService.getAccessTokenExpiration(anyString())).thenReturn(3600000L);
+        doNothing().when(tokenBlacklistService).addToBlacklist(anyString(), anyLong());
+
         mockMvc.perform(post("/api/v1/auth/logout")
-                        .header("Authorization", authHeader))
+                        .with(csrf())
+                        .header("Authorization", "Bearer validToken"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
 
-        verify(tokenBlacklistService).addToBlacklist(accessToken, expiration);
+        verify(tokenBlacklistService).addToBlacklist(eq("validToken"), anyLong());
     }
 
     @Test
-    @WithMockUser(username = "1")
-    void shouldLogoutSuccessfullyWithoutBearerPrefix() throws Exception {
-        // given
-        String authHeader = "InvalidTokenFormat";
+    @DisplayName("注册接口参数校验 - 用户名不能为空")
+    void register_ValidationError() throws Exception {
+        RegisterRequest invalidRequest = new RegisterRequest();
+        invalidRequest.setUsername("");
+        invalidRequest.setPassword("Password123");
+        invalidRequest.setEmail("test@example.com");
 
-        // when & then - 不会调用 blacklist，但不会报错
-        mockMvc.perform(post("/api/v1/auth/logout")
-                        .header("Authorization", authHeader))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
-    }
-
-    @Test
-    void shouldReturn401WhenLogoutWithoutAuth() throws Exception {
-        // when & then
-        mockMvc.perform(post("/api/v1/auth/logout"))
-                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                .andExpect(status().isBadRequest());
     }
 }

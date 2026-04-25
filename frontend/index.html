@@ -5,6 +5,36 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vue3 Template</title>
+    <!-- CDN 资源（生产环境使用） -->
+    <script type="module">
+      // 检测是否为生产环境
+      const isProd = location.hostname !== 'localhost' && !location.hostname.includes('127.0.0.1');
+      if (isProd) {
+        // 动态加载 CDN 资源
+        const cdnResources = [
+          { type: 'script', url: 'https://unpkg.com/vue@3.5.13/dist/vue.global.prod.js' },
+          { type: 'script', url: 'https://unpkg.com/vue-router@4.5.0/dist/vue-router.global.prod.js' },
+          { type: 'script', url: 'https://unpkg.com/pinia@3.0.2/dist/pinia.iife.prod.js' },
+          { type: 'script', url: 'https://unpkg.com/axios@1.8.4/dist/axios.min.js' },
+          { type: 'script', url: 'https://unpkg.com/element-plus@2.9.7/dist/index.full.min.js' },
+          { type: 'link', url: 'https://unpkg.com/element-plus@2.9.7/dist/index.css' }
+        ];
+        
+        cdnResources.forEach(res => {
+          if (res.type === 'script') {
+            const script = document.createElement('script');
+            script.src = res.url;
+            script.crossOrigin = 'anonymous';
+            document.head.appendChild(script);
+          } else {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = res.url;
+            document.head.appendChild(link);
+          }
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
